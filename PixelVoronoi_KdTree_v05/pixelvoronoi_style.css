@@ -1,0 +1,65 @@
+body{
+    background: #555;
+    font-family: "Trebuchet MS","Helvetica","Arial","Verdana","sans-serif";
+}
+
+#div_webgl_canvas {
+
+    padding: 0.0em;
+    position:absolute ;
+    left: 50px;
+    top: 50;
+    width: 400px;
+    height: 300px;
+    z-index: 2;
+    opacity: 1;
+
+}
+
+
+#gui{
+    padding: 0.0em;
+    padding: 15px;
+    position:absolute ;
+    left: 50px;
+    top: 0px;
+    width: 250px;
+    height: 560px;
+    z-index: 2;
+    color: #FFF;
+    background: #000;
+    opacity: .7;
+
+    /*visibility: hidden;*/
+}
+
+a:link    { font-weight:bold; color:#FFF; text-decoration:underline; }
+a:visited { font-weight:bold; color:#FFF; text-decoration:underline; }
+a:focus   { font-weight:bold; color:#333; text-decoration:underline; }
+a:hover   { font-weight:bold; color:#333; text-decoration:underline; }
+a:active  { font-weight:bold; color:#333; text-decoration:underline; }
+
+.slider{
+    /*width:250px;*/
+    width:100%;
+    float:left;
+    clear:both;
+    opacity: 1;
+}
+
+
+#gui_controls{
+    position:static;
+    padding: 0.0em;
+    margin: 100 10 10 10;
+    /*left: 0px;*/
+    /*top: 0px;*/
+    color: #FFF;
+    z-index: 3;
+    font-size:11px;
+    font-family: "Trebuchet MS","Helvetica","Arial","Verdana","sans-serif";
+    opacity: 1;
+    /*color: #FFF;*/
+    /*background: #111;*/
+    /*opacity: .7;*/
+}

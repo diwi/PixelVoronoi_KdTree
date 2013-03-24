@@ -1,0 +1,460 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+  "http://www.w3.org/TR/html4/loose.dtd">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<html>
+<head>
+  <title>PixelVoronoi KdTree</title>
+  <script src="libs/webgl_utils/webgl-utils.js"                 ></script>
+  <script src="libs/webgl_utils/webgl-debug.js"                 ></script>
+  <script src="libs/Dw/context/DwContext.js"                    ></script>
+  <script src="libs/Dw/shader/DwShader.js"                      ></script>
+  <script src="libs/Dw/context/DwFrameInfo.js"                  ></script>
+  <script src="libs/Dw/context/DwMouseInfo.js"                  ></script>
+  <script src="libs/Dw/context/DwKeyInfo.js"                    ></script>
+  <script src="libs/Dw/math/DwMat4.js"                          ></script>
+
+  <script src="Point.js"                  ></script>
+  <script src="KdTree.js"                 ></script>
+  <script src="QuickSort.js"              ></script>
+  <script src="mersenne-twister.js" >     </script>
+  <script src="PixelVoronoi_KdTree.js">   </script>
+  <script src="FBO.js">                   </script>
+  <script src="ScreenQuad.js" >           </script>
+  <script src="KdTreeRenderer.js">        </script>
+
+  <link rel="stylesheet" href="pixelvoronoi_style.css">
+
+  <script type="text/javascript">
+
+
+  function manageKeyInput(){
+    var key = CTX.key_info;
+    var key_char = key.keychar.toLowerCase();
+
+    if( key.keyreleased){
+
+      if( key_char == 'h') toggleHelp();
+      if( key_char == 'a') toggleActive();
+      if( key_char == 'f') toggleFullscreen();
+      if( key_char == 'i') toggleInverse();
+      if( key_char == 'k') toggleKdTreeDisplay();
+      if( key_char == 'd') toggleDismapDisplay();
+      if( key_char == 'r') window_RESIZING();
+
+      if( key_char >= '1' && key_char <= '5'){
+        DIS_MAP_SCALE = Math.pow(2, parseInt(key_char)-1 );
+        pixel_voronoi.resize( DIS_MAP_SCALE );
+        if( !B_ACTIVE)  updateDistanceMap();
+      }
+    }
+
+  }
+
+
+    function toggleFullscreen() {
+      // http://t3n.de/news/fullscreen-api-funktioniert-363613/
+      var element = document.getElementById("div_webgl_canvas");
+
+      if (element.requestFullScreen) {
+//        console.log("element.requestFullScreen");
+        if (!document.fullScreen) {
+          element.requestFullscreen();
+        } else {
+          document.exitFullScreen();
+        }
+
+      } else if (element.mozRequestFullScreen) {
+//        console.log("element.mozRequestFullScreen");
+        if (!document.mozFullScreen) {
+          element.mozRequestFullScreen();
+        } else {
+          document.mozCancelFullScreen();
+        }
+
+      } else if (element.webkitRequestFullScreen) {
+//        console.log("element.webkitRequestFullScreen");
+        console.log("document.webkitIsFullScreen = "+document.webkitIsFullScreen);
+        if (!document.webkitIsFullScreen) {
+          element.webkitRequestFullScreen(Element.ALLOW_KEYBOARD_INPUT);
+        } else {
+          document.webkitCancelFullScreen();
+        }
+      }
+    }
+
+
+    function toggleActive(){
+      B_ACTIVE = !B_ACTIVE;
+    }
+    function toggleInverse(){
+      B_INVERT_COLOR = !B_INVERT_COLOR;
+    }
+    function toggleKdTreeDisplay(){
+      B_KDTREE_DISPLAY = !B_KDTREE_DISPLAY;
+    }
+    function toggleDismapDisplay(){
+      B_DISMAP_DISPLAY = !B_DISMAP_DISPLAY;
+    }
+    function toggleHelp(){
+      var element = document.getElementById("gui");
+      var vis = element.style.visibility;
+      element.style.visibility = (vis === "hidden")? "visible" : "hidden";
+    }
+
+
+
+
+
+
+
+    var CTX;
+
+    var B_ACTIVE = true;
+    var B_INVERT_COLOR = false;
+    var B_DISMAP_DISPLAY = true;
+    var B_KDTREE_DISPLAY = false;
+
+    var TIMER_POINTS_UPDATE;
+    var TIMER_KDTREE_BUILD;
+    var TIMER_KDTREE_NNS;
+
+    var rand = new MersenneTwister();
+
+    var points = [];
+
+    var kd_tree;
+    var pixel_voronoi;
+    var kd_tree_renderer;
+
+    var DIS_MAP_SCALE = 2;
+
+
+
+
+    function newPoint(idx, num_points ){
+      var speed = random(0.2, 0.5);
+      var w     = CTX.VIEWPORT.width;
+      var h     = CTX.VIEWPORT.height;
+
+      var a     = random(0, (Math.PI*2));
+
+      var x     = random(0, w)*random(.1,1);
+      var y     = random(0, h)*random(.1,1);
+      var dx    = ( speed*Math.cos(a) *Math.log(x));
+      var dy    = ( speed*Math.sin(a) *Math.log(h-y));
+
+//      var x     = ( w/2 + random(0,   w*0.25)*Math.cos(a) );
+//      var y     = ( h/2 + random(w/4, w/3)*Math.sin(a) );
+
+      return new Point(CTX, idx, x, y, dx, dy);
+    }
+
+
+
+
+    function updatePointsMotion(){
+      for(var i = 0; i < points.length; i++){
+        points[i].update();
+      }
+    }
+
+
+    function assurePoints(num_points){
+      if( points == null){
+        points = new Point[0];
+      } else {
+        if( num_points == points.length ){
+          return;
+        }
+      }
+      num_points = Math.max(num_points, 2);
+//      num_points = Math.min(num_points, 4096*1);
+      var old_len = points.length;
+      var new_len = num_points;
+      if( new_len < old_len){
+        points = points.slice(0,new_len);
+      }
+      if( new_len > old_len ){
+        for(var i = old_len; i < new_len; i++){
+          points[i] = newPoint(i, new_len);
+        }
+      }
+    }
+
+
+    function updatePoints(){
+      var mouse = CTX.mouse_info;
+      if( mouse.mousepressed ){
+        var max_num = Math.pow(2, 15);
+        var num = Math.round(map(mouse.mouseX, 0, CTX.VIEWPORT.width, 0, max_num));
+        num = Math.min(num, max_num-1); // max allowed number of points
+        assurePoints(num);
+      }
+
+      updatePointsMotion();
+
+      points[0].x = mouse.mouseX;
+      points[0].y = mouse.mouseY;
+    }
+
+    function uniformPointDistribution(){
+      var num_points = points.length;
+      for(var i = 0; i < num_points; i++){
+        points[i] = newPoint(i, num_points);
+      }
+    }
+
+
+    function updateDistanceMap(){
+      var gl = CTX.gl;
+      gl.disable(gl.BLEND);
+
+      TIMER_KDTREE_BUILD = millis();
+      kd_tree.build(points, !true);
+      TIMER_KDTREE_BUILD = millis()-TIMER_KDTREE_BUILD;
+
+      TIMER_KDTREE_NNS = millis();
+      pixel_voronoi.createDistanceMap();
+      TIMER_KDTREE_NNS = millis()-TIMER_KDTREE_NNS;
+    }
+
+
+    function random(min, max){
+      return min + rand.random()*(max-min);
+    }
+
+    function map(val, a, b, A, B){
+      return ((val-a)/(b-a))*(B-A)+A;
+    }
+
+
+    function millis(){
+      return new Date().getTime();
+    }
+
+    function drawScene() {
+
+      var gl = CTX.gl;
+
+      gl.clearColor(0,0,0,1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+
+      TIMER_POINTS_UPDATE = 0;
+      TIMER_KDTREE_NNS    = 0;
+      TIMER_KDTREE_BUILD  = 0;
+
+      if( B_ACTIVE ){
+
+        TIMER_POINTS_UPDATE = millis();
+        updatePoints();
+        TIMER_POINTS_UPDATE = millis()-TIMER_POINTS_UPDATE;
+
+        updateDistanceMap();
+      }
+
+      if( B_DISMAP_DISPLAY ){
+        gl.viewport(0, 0, CTX.VIEWPORT.width, CTX.VIEWPORT.height);
+        pixel_voronoi.render(B_INVERT_COLOR);
+      }
+
+      if( B_KDTREE_DISPLAY ){
+        gl.viewport(0, 0, CTX.VIEWPORT.width, CTX.VIEWPORT.height);
+        gl.enable( gl.BLEND );
+        gl.blendEquation( gl.FUNC_ADD );
+        gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
+
+        kd_tree.genVBO(false, true, 0, 0, CTX.VIEWPORT.width, CTX.VIEWPORT.height);
+        kd_tree_renderer.render(B_INVERT_COLOR);
+      }
+
+      gl.disable(gl.BLEND);
+    }
+
+
+
+
+    function frameAnimation() {
+      requestAnimFrame(frameAnimation);
+      CTX.updateBegin();
+      manageKeyInput();
+
+      if( CTX.ANIMATOR  ){
+        drawScene();
+        CTX.WEBGL_ERROR_CHECK();
+      }
+
+      CTX.updateEnd();
+      updateHTMLtags();
+    }
+
+
+    function webGLStart() {
+      console.log("_____________________________________________________________");
+      console.log("... STARTING SETUP");
+
+      CTX = new DwContext(true, "webgl_pixel_voronoi");
+      CTX.onclose  = window_CLOSING;
+      CTX.onresize = window_RESIZING;
+
+
+      var gl = CTX.gl;
+
+      var EXT_tex_float = gl.getExtension("OES_texture_float")
+//      console.log("EXT: OES_texture_float = " + EXT_tex_float);
+
+//      var highp = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+//      var gl_ext = gl.getSupportedExtensions();
+//      console.log("webgl supported extensions:");
+//      for( var i = 0; i < gl_ext.length; i++){
+//        console.log("  i "+gl_ext[i]);
+//      }
+
+      rand = new MersenneTwister(100);
+
+      var timer;
+
+      timer = millis();
+
+      var num_points = Math.pow(2,12);
+//      points = [];  points.length = num_points;
+//      for(var i = 0; i < num_points; i++){
+//        points[i] = newPoint(i, num_points);
+//      }
+      assurePoints(num_points);
+      timer = millis()-timer;
+      console.log("  build "+num_points+" points "+timer+" ms");
+
+      timer = millis();
+      kd_tree = new KdTree();
+      kd_tree.build(points, !true);
+      timer = millis()-timer;
+      console.log("  build kdtree "+timer+" ms");
+
+
+      pixel_voronoi = new PixelVoronoi_KdTree(CTX, kd_tree);
+
+      kd_tree_renderer = new KdTreeRenderer(CTX, kd_tree);
+
+      console.log("FINISHED SETUP");
+      window_RESIZING();
+      frameAnimation();
+    }
+
+
+    function window_RESIZING(){
+      console.log("(window_RESIZING) initStuff, new size = "+CTX.VIEWPORT.width +", "+ CTX.VIEWPORT.height );
+
+      pixel_voronoi.resize( DIS_MAP_SCALE );
+      kd_tree_renderer.resize();
+
+      uniformPointDistribution();
+      updateDistanceMap();
+
+      drawScene();
+    }
+
+    function window_CLOSING(){
+      console.log("(window_CLOSING) deleting gl-stuff: buffers, shaders, textures, ..." );
+
+      points = null;
+
+      kd_tree.delete();
+      kd_tree= null;
+
+      pixel_voronoi.delete();
+      pixel_voronoi = null;
+
+      kd_tree_renderer.delete();
+      kd_tree_renderer = null;
+    }
+
+
+    function updateHTMLtags(){
+      document.getElementById("active"          ).innerHTML = B_ACTIVE;
+      document.getElementById("kdtree_display"  ).innerHTML = B_KDTREE_DISPLAY;
+      document.getElementById("dismap_display"  ).innerHTML = B_DISMAP_DISPLAY;
+      document.getElementById("invert_colors"   ).innerHTML = B_INVERT_COLOR;
+
+      document.getElementById("debug_framecount").innerHTML = CTX.frame_info.framecount;
+      document.getElementById("debug_framerate" ).innerHTML = CTX.frame_info.framerate .toFixed( 2 );
+      document.getElementById("debug_mouse_xy"  ).innerHTML = CTX.mouse_info.mouseX +"/ "+CTX.mouse_info.mouseY;
+      document.getElementById("viewport_size"   ).innerHTML = CTX.VIEWPORT.width +"/ "+CTX.VIEWPORT.height;
+      document.getElementById("num_points"      ).innerHTML = kd_tree.points.length;
+      document.getElementById("num_nodes"       ).innerHTML = kd_tree.kd_tree.length;
+      document.getElementById("max_depth"       ).innerHTML = kd_tree.max_depth;
+      document.getElementById("nns_resolution"  ).innerHTML = DIS_MAP_SCALE;
+
+      document.getElementById("timer_points_update").innerHTML = TIMER_POINTS_UPDATE;
+      document.getElementById("timer_kdtree_build" ).innerHTML = TIMER_KDTREE_BUILD;
+      document.getElementById("timer_kdtree_nns"   ).innerHTML = TIMER_KDTREE_NNS;
+
+
+    }
+
+  </script>
+</head>
+<!--<body onload="webGLStart();">-->
+<body >
+  <div id="div_webgl_canvas" class="gui_text" >
+    <canvas id="webgl_pixel_voronoi"></canvas>
+
+    <div id="gui">
+      <div id="gui_controls">
+        </br>
+        <b id="help"             ></b>HELP [ h ]</br>
+        <br>
+
+        <a href="#" onClick="toggleFullscreen()">FULLSCREEN</a> [ F11 ]</br></br>
+
+
+        UPDATE points/kdtree [ a ]: <b id="active"             >.</b> </br>
+        INVERT colors [ i ]:        <b id="invert_colors"      >.</b> </br>
+        NNS resolution [ 1-5 ]:     <b id="nns_resolution"     >.</b> </br>
+        DISPLAY distancemap [ d ]:  <b id="dismap_display"     >.</b> </br>
+        DISPLAY kdtree [ k ]:       <b id="kdtree_display"     >.</b> </br>
+        <!--reset points [ r ]:         <b id="reset"              ></b> </br>-->
+        </br>
+        num points:               <b id="num_points"         >.</b> </br>
+        num kdtree nodes:         <b id="num_nodes"          >.</b> </br>
+        max kdtree depth:         <b id="max_depth"          >.</b> </br>
+
+        </br>
+        framecount:               <b id="debug_framecount"   >.</b> </br>
+        framerate:                <b id="debug_framerate"    >.</b> </br>
+        mouse:                    <b id="debug_mouse_xy"     >.</b> </br>
+        viewport:                 <b id="viewport_size"      >.</b> </br>
+
+        </br>
+        timer points update (.js):      <b id="timer_points_update">.</b> ms</br>
+        timer kdtree build (.js):       <b id="timer_kdtree_build" >.</b> ms</br>
+        timer kdtree nns (.glsl):       <b id="timer_kdtree_nns"   >.</b> ms</br>
+
+        </br>
+        MousePressed + MouseX ... number of points.</br>
+        </br>
+
+        <i>
+          Kd-Tree Nearest Neighbor Search.</br>
+          For each pixel, the distance to the nearest neighbor is stored in a "distance-map",
+          which results in a voronoi-diagram.</br>
+        </i>
+        <a href="http://thomasdiewald.com/blog/?p=1825" target="blank" class="gui_text">Detailed Blog Post</a>
+        </br>
+        </br>
+        <p>
+          by <a href="http://thomasdiewald.com/blog/" target="blank" class="gui_text">Thomas Diewald</a> | 2013<br>
+          <!--2013-->
+        </p>
+
+      </div>
+    </div>
+  </div>
+
+
+  <script type="text/javascript">
+    webGLStart();
+  </script>
+</body>
+</html>
