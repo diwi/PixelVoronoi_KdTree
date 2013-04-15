@@ -72,6 +72,7 @@ function KdTree(){
   this.points = [];    // copy of input points
 
   this.quick_sort = new Quicksort(); // turned out to be the fastest.
+  this.quick_select = new QuickSelect(); // turned out to be the fastest.
 
   this.kd_tree_planes_buffer = 0;
   this.kd_tree_planes = 0;
@@ -99,7 +100,8 @@ KdTree.prototype.build = function(points, DEBUG){
 //  this.printTree();
 
 //  console.log("");
-  this.buildRecursive(1, this.points );
+//  this.buildRecursive(1, this.points );
+  this.buildRecursiveFast(1, this.points, 0, this.points.length-1 );
 //  this.printTree();
   if( DEBUG ){
     this.printTree();
@@ -145,7 +147,7 @@ KdTree.prototype.buildIterative = function(pnts){
 
   while( ptr_T++ < this.num_nodes ){
 
-    if( (pnts = stack_P[ptr_T]) == undefined ) continue
+    if( (pnts = stack_P[ptr_T]) == undefined ) continue;
 
     var e = pnts.length;
     var m = e>>1;
@@ -186,7 +188,28 @@ KdTree.prototype.buildRecursive = function(idx, pnts){
   this.kd_tree[idx] |=  Math.round( pnts[m].y * KdTree.PNT_SCALE );
 }
 
+// slightly faster (~9%) than iterative version
+KdTree.prototype.buildRecursiveFast = function(idx, pnts, left, right){
 
+
+  var m = (left+right)>>1;
+
+  if( (right-left) >= 2 ){
+//    this.quick_sort.sort(pnts, KdTree.GET_DIM(this.kd_tree[idx]) );
+    this.quick_select.sort(pnts, KdTree.GET_DIM(this.kd_tree[idx]), left, right-1, m);
+    this.kd_tree[idx] |=  Math.round( pnts[m].x * KdTree.PNT_SCALE )<<16;
+    this.kd_tree[idx] |=  Math.round( pnts[m].y * KdTree.PNT_SCALE );
+
+    this.buildRecursiveFast( (idx<<1),   pnts, left, m );
+    this.buildRecursiveFast( (idx<<1)+1, pnts, m, right);
+  } else {
+    this.kd_tree[idx] |= KdTree.BIT_LEAF; // mark as leaf
+    this.kd_tree[idx] |=  Math.round( pnts[m].x * KdTree.PNT_SCALE )<<16;
+    this.kd_tree[idx] |=  Math.round( pnts[m].y * KdTree.PNT_SCALE );
+  }
+
+
+}
 
 
 
@@ -206,6 +229,7 @@ KdTree.prototype.printTree = function(){
       var P        = KdTree.GET_P(i);
       var L        = KdTree.GET_L(i);
       var R        = KdTree.GET_R(i);
+
       console.log(
         "tree[%s]  %s  dim=%1s  [P,L,R]=[%s,%s,%s]  pnt=[%s,%s]  code=%s",
         i, leaf?"-> LEAF":"       ", dim, P,L,R, x.toFixed(2), y.toFixed(2),  this.kd_tree[i]);

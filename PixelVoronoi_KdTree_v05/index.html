@@ -16,6 +16,7 @@
   <script src="Point.js"                  ></script>
   <script src="KdTree.js"                 ></script>
   <script src="QuickSort.js"              ></script>
+  <script src="QuickSelect.js"              ></script>
   <script src="mersenne-twister.js" >     </script>
   <script src="PixelVoronoi_KdTree.js">   </script>
   <script src="FBO.js">                   </script>
@@ -126,7 +127,7 @@
     var pixel_voronoi;
     var kd_tree_renderer;
 
-    var DIS_MAP_SCALE = 2;
+    var DIS_MAP_SCALE = 1;
 
 
 
@@ -318,6 +319,8 @@
       timer = millis();
 
       var num_points = Math.pow(2,12);
+//      num_points = Math.pow(2,21);
+//      num_points = 15;
 //      points = [];  points.length = num_points;
 //      for(var i = 0; i < num_points; i++){
 //        points[i] = newPoint(i, num_points);
